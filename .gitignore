@@ -1,0 +1,16 @@
+# Source documents and execution output must never be committed.
+output/
+sealed/
+private/
+.env
+.env.*
+__pycache__/
+*.pyc
+*.pdf
+*.hwp
+*.hwpx
+*.zip
+*.key
+*_private.pem
+*_private_key.pem
+.venv/
