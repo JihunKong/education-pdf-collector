@@ -1,39 +1,39 @@
-name: Public PDF transport test (encrypted results)
+name: Verified attachment recovery (recipient 0832)
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-    paths:
-      - '.github/workflows/pdf-preflight.yml'
-      - 'scripts/**'
-      - 'keys/recipient_cert.pem'
+    branches: [recovery-session-0832]
 permissions:
   contents: read
 concurrency:
-  group: pdf-transport-test
+  group: pdf-recovery-session-0832
   cancel-in-progress: false
 jobs:
-  test:
+  recover:
     if: ${{ github.repository == 'JihunKong/education-pdf-collector' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Checkout collector code and public certificate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout recovery code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Offline unit tests
+      - name: Unit tests
         run: python3 -m unittest discover -s scripts -p 'test_public_pdf_probe.py' -v
-      - name: Fetch verified MOE and JNE attachment URLs
+      - name: Verify recipient certificate fingerprint
+        run: |
+          actual=$(openssl x509 -in keys/recipient_cert.pem -noout -fingerprint -sha256)
+          test "$actual" = 'sha256 Fingerprint=BC:40:15:03:D8:75:4E:77:6A:A3:96:DF:0D:60:38:64:D3:45:1A:0A:36:88:AB:4F:9E:FB:D5:07:E8:7B:68:DD'
+      - name: Fetch 3 verified official attachment URLs
         run: python3 scripts/recover_official_sources.py
-      - name: Encrypt result files; fail closed
+      - name: Encrypt output
         if: ${{ always() && hashFiles('output/**') != '' }}
         run: python3 scripts/seal_results.py
-      - name: Preserve only encrypted results
+      - name: Upload ciphertext only
         if: ${{ always() && hashFiles('sealed/results.cms') != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: sealed-pdf-transport-${{ github.run_id }}
+          name: sealed-recovery-0832-${{ github.run_id }}
           path: |
             sealed/results.cms
             sealed/results.sha256
