@@ -24,8 +24,8 @@ jobs:
           persist-credentials: false
       - name: Offline unit tests
         run: python3 -m unittest discover -s scripts -p 'test_public_pdf_probe.py' -v
-      - name: Fetch one public PDF and one source page
-        run: python3 scripts/public_pdf_probe.py
+      - name: Fetch verified MOE and JNE attachment URLs
+        run: python3 scripts/recover_official_sources.py
       - name: Encrypt result files; fail closed
         if: ${{ always() && hashFiles('output/**') != '' }}
         run: python3 scripts/seal_results.py
