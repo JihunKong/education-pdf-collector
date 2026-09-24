@@ -1,0 +1,39 @@
+name: Verify encrypted artifact recovery
+on:
+  push:
+    branches: [verify-artifact-20260924]
+    paths: ['.github/workflows/verify-artifact.yml']
+permissions:
+  contents: read
+concurrency:
+  group: artifact-verification-20260924
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: ${{ github.repository == 'JihunKong/education-pdf-collector' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Offline unit tests
+        run: python3 -m unittest discover -s scripts -p 'test_public_pdf_probe.py' -v
+      - name: Fetch observed official attachments
+        run: python3 scripts/recover_official.py
+      - name: Encrypt for independently backed-up verification key
+        if: ${{ always() && hashFiles('output/**') != '' }}
+        run: python3 -c "from pathlib import Path; from scripts.seal_results import seal; seal(Path('output'), Path('keys/verification_cert.pem'), Path('sealed/results.cms'))"
+      - name: Store encrypted archive only
+        if: ${{ always() && hashFiles('sealed/results.cms') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: verified-encrypted-pdf-${{ github.run_id }}
+          path: |
+            sealed/results.cms
+            sealed/results.sha256
+          retention-days: 3
+          if-no-files-found: error
+      - name: Remove temporary plaintext
+        if: always()
+        run: rm -rf -- output/
