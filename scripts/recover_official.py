@@ -1,40 +1,36 @@
-"""Use observed MOE attachment URLs; retain only encrypted results in CI.
-The failed Incheon response is diagnostic HTML, never counted as a PDF.
+"""Continue the original target queue with two observed Jeonnam source URLs.
+MOE transport success was established in run 35977100576; do not re-fetch it here.
+Only encrypted output is retained by the workflow. No login or bypass is used.
 """
 from pathlib import Path
 import json
 import time
 from public_pdf_probe import fetch_one, MAX_PDF_BYTES, MAX_HTML_BYTES
 
-SOURCE = 'https://www.moe.go.kr/boardCnts/viewRenew.do?boardID=316&boardSeq=105372&lev=0&m=0302&opType=N&page=1&s=moe&searchType=null&statusYN=W'
-ATTACHMENTS = [
-    ('T158_2026_primary', '20b6e362275e20aefc61857e4af63872', '2026 학교생활기록부 기재요령(초등학교).pdf'),
-    ('extra_2026_middle', '4ad0d9bae480b48e1b9b3de0592f955b', '2026 학교생활기록부 기재요령(중학교).pdf'),
-    ('extra_2026_high', '6668402ed462e43bd1ff70123359bf50', '2026 학교생활기록부 기재요령(고등학교).pdf'),
+TARGETS = [
+    dict(id='T001_source_page',
+         url='https://www.jne.go.kr/open/na/ntt/selectNttInfo.do?mi=551&nttSn=5135663',
+         filename='T001_source_page.html', kind='html', limit=MAX_HTML_BYTES,
+         note='Observed public post: 2025 high school credit system operation guide. This is source HTML, not a PDF.'),
+    dict(id='T072_2026_personnel_candidate',
+         url='https://www.jne.go.kr/upload/main/na/bbs_124/ntt_5168750/doc_e0cf1c96-3e8e-4d45-a364-6dcbb2beccf41771a8939b75126.pdf',
+         filename='2026_교육공무원_인사실무_공식후보.pdf', kind='pdf', limit=MAX_PDF_BYTES,
+         note='Previously observed official PDF URL. Request ID and bibliographic edition must be checked against the original queue; not approved for redistribution.'),
 ]
 
 def main():
-    out = Path('output')
+    out=Path('output')
     out.mkdir(exist_ok=True)
-    results = []
-    for docid, seq, filename in ATTACHMENTS:
-        target = dict(id=docid, url=f'https://www.moe.go.kr/boardCnts/fileDown.do?fileSeq={seq}&m=0302&s=moe',
-                      filename=filename, kind='pdf', limit=MAX_PDF_BYTES,
-                      note='Official attachment link observed on MOE post 105372. Edition validation pending; redistribution not approved.')
-        r = fetch_one(target, out)
-        r['source_page'] = SOURCE
+    results=[]
+    for target in TARGETS:
+        r=fetch_one(target,out)
         results.append(r)
-        (out / 'probe_results.json').write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
-        print(json.dumps({k:r.get(k) for k in ('id','status','error_type','bytes')}, ensure_ascii=False), flush=True)
+        (out/'probe_results.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
+        print(json.dumps({k:r.get(k) for k in ('id','status','error_type','bytes')},ensure_ascii=False),flush=True)
         time.sleep(1)
-    diagnostic = dict(id='incheon_html_diagnostic', url='https://www.ice.go.kr/upload/ice/na/bbs_1630/2026/02/54805c6beb01532ef8ecb9b71a3155ed.pdf',
-                      filename='incheon_response_diagnostic.html', kind='html', limit=MAX_HTML_BYTES,
-                      note='Inspect earlier 77-byte HTML response; not a source PDF and not counted as collected.')
-    results.append(fetch_one(diagnostic, out))
-    (out / 'probe_results.json').write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
-    count = sum(r['status']=='saved' and r['kind']=='pdf' for r in results)
-    (out / 'SUMMARY.md').write_text(f'# Official attachment transport test\n\nPDFs saved: {count}/3.\n\nSource: {SOURCE}\n\nFull PDF parsing and source/edition review remain required. Redistribution is not approved.\n', encoding='utf-8')
-    return 0 if count else 2
+    n=sum(r['status']=='saved' and r['kind']=='pdf' for r in results)
+    (out/'SUMMARY.md').write_text(f'# Jeonnam recovery batch\n\nPDFs saved: {n}.\nHTML responses are source-discovery inputs only. Request matching, full PDF validation and distribution review remain pending.\n',encoding='utf-8')
+    return 0 if n else 2
 
-if __name__ == '__main__':
+if __name__=='__main__':
     raise SystemExit(main())
