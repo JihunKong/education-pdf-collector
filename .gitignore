@@ -1,7 +1,8 @@
-# Source documents and execution output must never be committed.
+# Source documents, decrypted output, and private keys must never be committed.
 output/
 sealed/
 private/
+recovered/
 .env
 .env.*
 __pycache__/
@@ -10,7 +11,11 @@ __pycache__/
 *.hwp
 *.hwpx
 *.zip
+*.cms
 *.key
-*_private.pem
-*_private_key.pem
+*.pem
+*.p12
+*.pfx
+!keys/recipient_cert.pem
+!keys/transport_session_cert.pem
 .venv/
