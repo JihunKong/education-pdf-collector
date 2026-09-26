@@ -93,4 +93,16 @@ class Tests(unittest.TestCase):
                 with self.assertRaises(TransportError):CurlTransport(delay=0).fetch(URL,Path(d)/'tmp',100)
                 args=run.call_args[0][0];i=args.index('--user-agent')
                 self.assertTrue(args[i+1].startswith('education-pdf-collector/'))
+    def test_declared_size_raises_cap(self):
+        with tempfile.TemporaryDirectory() as d:
+            f=Fake({URL:PDF});job=dict(JOB,declared_bytes=80*1024*1024)
+            seen=[]
+            orig=f.fetch
+            def spy(url,dst,max_bytes,referer=''):seen.append(max_bytes);return orig(url,dst,max_bytes,referer)
+            f.fetch=spy;Collector(Path(d),f).run([job],max_total_mb=400)
+            self.assertEqual(seen,[80*1024*1024])
+            f2=Fake({URL+'?b':PDF});seen2=[];o2=f2.fetch
+            f2.fetch=lambda u,dst,m,r='':(seen2.append(m),o2(u,dst,m,r))[1]
+            Collector(Path(d),f2).run([dict(JOB,url=URL+'?b',declared_bytes=500*1024*1024)],max_total_mb=1000)
+            self.assertEqual(seen2,[75*1024*1024])
 if __name__=='__main__':unittest.main()

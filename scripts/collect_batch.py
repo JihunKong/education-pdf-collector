@@ -92,6 +92,8 @@ class TransportError(Exception):
 class CurlTransport:
     def __init__(self,delay=1.5):self.delay=delay;self.last={};self.blocked={}
     def fetch(self,url: str,dst: Path,max_bytes: int,referer: str='') -> dict:
+        # 90 s covers files up to 75 MB; allow about 1 s per extra MB for larger declared files.
+        max_time=90+max(0,(max_bytes-75*1024*1024)//(1024*1024))
         chain=[]
         for _ in range(5):
             url=safe_url(url)
@@ -101,10 +103,10 @@ class CurlTransport:
             time.sleep(max(0,self.delay-(time.monotonic()-self.last.get(host,0))))
             self.last[host]=time.monotonic()
             args=['curl','--proto','=https','--silent','--show-error','--connect-timeout','10',
-                  '--max-time','90','--max-filesize',str(max_bytes),'--output',str(dst),
+                  '--max-time',str(max_time),'--max-filesize',str(max_bytes),'--output',str(dst),
                   '--write-out','%{json}','--header','Accept-Encoding: identity','--user-agent',USER_AGENT]
             if referer and safe_url(referer):args+=['--referer',referer]
-            try:r=subprocess.run(args+[url],capture_output=True,text=True,timeout=95)
+            try:r=subprocess.run(args+[url],capture_output=True,text=True,timeout=max_time+5)
             except subprocess.TimeoutExpired as e:
                 raise TransportError('process_timeout',{}) from e
             try:meta=json.loads(r.stdout)
@@ -159,7 +161,12 @@ class Collector:
             else:
                 tmp=self.out/'transfer.part'
                 remaining=int(max_total_mb*1024*1024-total)
-                limit=min(75*1024*1024 if kind=='pdf' else 4*1024*1024,remaining)
+                per_file=75*1024*1024 if kind=='pdf' else 4*1024*1024
+                # An official post that declares a larger attachment size may raise the
+                # per-file cap up to that exact size (hard ceiling 300 MB).
+                declared=job.get('declared_bytes')
+                if kind=='pdf' and isinstance(declared,int) and per_file<declared<=300*1024*1024:per_file=declared
+                limit=min(per_file,remaining)
                 try:
                     if limit<=0:raise TransportError('batch_size_limit',{})
                     meta=self.transport.fetch(url,tmp,limit,job.get('parent_url',''))
