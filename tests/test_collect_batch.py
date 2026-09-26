@@ -82,4 +82,8 @@ class Tests(unittest.TestCase):
             body=('<script>x.fileAttachAddTxt("a.pdf","/upload/a.pdf","%d");</script>'%len(PDF)).encode()
             c=Collector(Path(d),Fake({p:body,u:PDF}));self.assertEqual(c.run([dict(JOB,url=p,kind='page')]),0)
             self.assertTrue(c.rows[1]['declared_bytes_match'])
+            # Resume from the same output folder: cached PDF keeps the size check.
+            f2=Fake({p:body});c2=Collector(Path(d),f2);self.assertEqual(c2.run([dict(JOB,url=p,kind='page')]),0)
+            self.assertEqual(c2.rows[1]['status'],'existing_verified');self.assertTrue(c2.rows[1]['declared_bytes_match'])
+            self.assertEqual(f2.calls,[p])
 if __name__=='__main__':unittest.main()

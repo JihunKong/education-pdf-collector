@@ -152,6 +152,7 @@ class Collector:
             old=self.state['records'].get(url,{})
             if kind=='pdf' and self.cached(old):
                 row.update(status='existing_verified',saved_path=old['saved_path'],sha256=old['sha256'],bytes=old['bytes'])
+                if 'declared_bytes' in job:row['declared_bytes_match']=(old['bytes']==job['declared_bytes'])
             else:
                 tmp=self.out/'transfer.part'
                 remaining=int(max_total_mb*1024*1024-total)
