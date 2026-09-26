@@ -2,7 +2,7 @@ import sys, tempfile, unittest, json, subprocess
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from collect_batch import Collector, CurlTransport, TransportError, safe_url, pdf_signature, extract_links, filename
+from collect_batch import Collector, CurlTransport, TransportError, safe_url, pdf_signature, extract_links, filename, hwp_signature
 PDF=b'%PDF-1.7\nSynthetic fixture, not a real document\n%%EOF\n'
 URL='https://www.moe.go.kr/a.pdf'
 JOB={'id':'T1','url':URL,'kind':'pdf','title':'fixture','region':'test'}
@@ -67,4 +67,65 @@ class Tests(unittest.TestCase):
                 self.assertEqual(first.exception.stage,'tcp_connect_failure')
                 with self.assertRaises(TransportError) as second:t.fetch(URL+'?2',Path(d)/'tmp',100)
                 self.assertEqual(second.exception.stage,'host_deferred');self.assertEqual(run.call_count,1)
+    def test_jeonnam_file_attach(self):
+        page='https://www.jge.go.kr/open/na/ntt/selectNttInfo.do?mi=551&nttSn=5135663'
+        s=('<a href="'+page.replace('&','&amp;')+'">미리보기 (전남)고교학점제+운영+안내서.pdf</a>'
+           '<script>wFileUpload.fileAttachAddTxt("(전남)고교학점제+운영+안내서.pdf","/upload/open/na/bbs_297/ntt_5135663/doc_x.pdf","10281996");</script>')
+        links=extract_links(s,page)
+        self.assertEqual(len(links),1)
+        self.assertEqual(links[0]['url'],'https://www.jge.go.kr/upload/open/na/bbs_297/ntt_5135663/doc_x.pdf')
+        self.assertEqual(links[0]['label'],'(전남)고교학점제 운영 안내서.pdf')
+        self.assertEqual(links[0]['declared_bytes'],10281996)
+    def test_declared_bytes_recorded(self):
+        with tempfile.TemporaryDirectory() as d:
+            p='https://www.jge.go.kr/page';u='https://www.jge.go.kr/upload/a.pdf'
+            body=('<script>x.fileAttachAddTxt("a.pdf","/upload/a.pdf","%d");</script>'%len(PDF)).encode()
+            c=Collector(Path(d),Fake({p:body,u:PDF}));self.assertEqual(c.run([dict(JOB,url=p,kind='page')]),0)
+            self.assertTrue(c.rows[1]['declared_bytes_match'])
+            # Resume from the same output folder: cached PDF keeps the size check.
+            f2=Fake({p:body});c2=Collector(Path(d),f2);self.assertEqual(c2.run([dict(JOB,url=p,kind='page')]),0)
+            self.assertEqual(c2.rows[1]['status'],'existing_verified');self.assertTrue(c2.rows[1]['declared_bytes_match'])
+            self.assertEqual(f2.calls,[p])
+    def test_identifying_user_agent(self):
+        with tempfile.TemporaryDirectory() as d:
+            response=subprocess.CompletedProcess([],28,json.dumps({'http_code':0,'time_connect':0}),'Timeout')
+            with patch('collect_batch.subprocess.run',return_value=response) as run:
+                with self.assertRaises(TransportError):CurlTransport(delay=0).fetch(URL,Path(d)/'tmp',100)
+                args=run.call_args[0][0];i=args.index('--user-agent')
+                self.assertTrue(args[i+1].startswith('education-pdf-collector/'))
+    def test_declared_size_raises_cap(self):
+        with tempfile.TemporaryDirectory() as d:
+            f=Fake({URL:PDF});job=dict(JOB,declared_bytes=80*1024*1024)
+            seen=[]
+            orig=f.fetch
+            def spy(url,dst,max_bytes,referer=''):seen.append(max_bytes);return orig(url,dst,max_bytes,referer)
+            f.fetch=spy;Collector(Path(d),f).run([job],max_total_mb=400)
+            self.assertEqual(seen,[80*1024*1024])
+            f2=Fake({URL+'?b':PDF});seen2=[];o2=f2.fetch
+            f2.fetch=lambda u,dst,m,r='':(seen2.append(m),o2(u,dst,m,r))[1]
+            Collector(Path(d),f2).run([dict(JOB,url=URL+'?b',declared_bytes=500*1024*1024)],max_total_mb=1000)
+            self.assertEqual(seen2,[75*1024*1024])
+    def test_hwp_only_when_requested(self):
+        page='https://www.jge.go.kr/page'
+        s='<script>w.fileAttachAddTxt("계획.hwpx","/upload/a.hwpx","900");w.fileAttachAddTxt("계획.pdf","/upload/a.pdf","800");</script>'
+        self.assertEqual([x['url'][-4:] for x in extract_links(s,page)],['.pdf'])
+        self.assertEqual(sorted(x['url'].rsplit('.',1)[1] for x in extract_links(s,page,True)),['hwpx','pdf'])
+    def test_hwp_signature(self):
+        self.assertTrue(hwp_signature(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'+b'0'*600,'hwp'))
+        self.assertTrue(hwp_signature(b'PK\x03\x04'+b'mimetypeapplication/hwp+zip'+b'0'*600,'hwpx'))
+        self.assertFalse(hwp_signature(b'<html>blocked</html>'+b' '*600,'hwp'))
+    def test_hwp_original_saved(self):
+        with tempfile.TemporaryDirectory() as d:
+            p='https://www.jge.go.kr/page';u='https://www.jge.go.kr/upload/a.hwpx'
+            hw=b'PK\x03\x04'+b'mimetypeapplication/hwp+zip'+b'0'*600
+            body=('<script>x.fileAttachAddTxt("a.hwpx","/upload/a.hwpx","%d");</script>'%len(hw)).encode()
+            c=Collector(Path(d),Fake({p:body,u:hw}));self.assertEqual(c.run([dict(JOB,url=p,kind='page',include_hwp=True)]),0)
+            self.assertTrue(c.rows[1]['saved_path'].endswith('.hwpx'));self.assertTrue(c.rows[1]['declared_bytes_match'])
+            c2=Collector(Path(d),Fake({p:body}));self.assertEqual(c2.run([dict(JOB,url=p,kind='page')]),2)
+    def test_k2_uploaded_hwp(self):
+        page='https://jeti.jge.go.kr/jeti_da/na/ntt/selectNttInfo.do?mi=1&nttSn=2'
+        s="<script>DEXT5UPLOAD.AddUploadedFile('1', '계획.hwp', '/data/attach_data/x/doc_1.hwp', '166912', 'k', uploadID);</script>"
+        self.assertEqual(extract_links(s,page),[])
+        l=extract_links(s,page,True)
+        self.assertEqual(l[0]['url'],'https://jeti.jge.go.kr/data/attach_data/x/doc_1.hwp');self.assertEqual(l[0]['declared_bytes'],166912)
 if __name__=='__main__':unittest.main()

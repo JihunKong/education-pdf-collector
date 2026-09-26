@@ -16,6 +16,9 @@ APPROVED = {'moe.go.kr','jne.go.kr','jne.kr','jge.go.kr','gen.go.kr','cbe.go.kr'
             'gbe.kr','gne.go.kr','jje.go.kr','jnei.go.kr'}
 DOWNLOAD = re.compile(r'\.pdf(?:$|[?#])|filedown|download|downfile|downpost', re.I)
 NONPDF = re.compile(r'\.(?:hwp|hwpx|zip|exe|msi|dmg|docx?|xlsx?|pptx?)(?:\b|$)',re.I)
+# Some school boards reject curl's default agent with 400 RequestBlocked.
+# Identify the tool honestly instead of impersonating a browser.
+USER_AGENT = 'education-pdf-collector/1.1 (+https://github.com/JihunKong/education-pdf-collector)'
 UNSAFE = re.compile(r'login|logout|signin|signout|delete|remove|insert|update|register|write\.do',re.I)
 
 def safe_url(url: str, base: str='') -> str:
@@ -29,6 +32,13 @@ def safe_url(url: str, base: str='') -> str:
 
 def pdf_signature(data: bytes) -> bool:
     return len(data)>20 and data[:1024].lstrip().startswith(b'%PDF-') and b'%%EOF' in data[-8192:]
+
+def hwp_signature(data: bytes, ext: str) -> bool:
+    """HWP 5.x is an OLE compound file; HWPX is a ZIP container with a mimetype entry."""
+    if len(data)<512:return False
+    if ext=='hwp':return data[:8]==b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'
+    if ext=='hwpx':return data[:4]==b'PK\x03\x04' and b'hwp' in data[:200].lower()
+    return False
 
 def digest(path: Path) -> str:
     h=hashlib.sha256()
@@ -60,18 +70,32 @@ class LinkParser(HTMLParser):
     def handle_endtag(self,tag):
         if tag=='a' and self.a:self.links.append(tuple(self.a));self.a=None
 
-def extract_links(text: str, base: str) -> list:
+def extract_links(text: str, base: str, include_hwp: bool=False) -> list:
     """Only literal href/DEXT upload paths; do not execute or guess JavaScript."""
-    parser=LinkParser(); parser.feed(text); result={}
+    parser=LinkParser(); parser.feed(text); result={}; declared={}
+    page=safe_url(base)
     for href,label,js in parser.links:
         if NONPDF.search(label): continue
         url=safe_url(href,base)
-        if url and (DOWNLOAD.search(url) or '.pdf' in label.lower()):result[url]=label.strip()
+        # A preview/self link (href="#" or the post itself) is not an attachment.
+        if not url or url==page: continue
+        if DOWNLOAD.search(url) or '.pdf' in label.lower():result[url]=label.strip()
     # These paths occur verbatim in the official page's upload initialization.
-    for match in re.finditer(r"AddUploadedFile\(\s*'[^']*'\s*,\s*'([^']+\.pdf)'\s*,\s*'([^']+\.pdf)'",text,re.I):
+    ext=r'(?:pdf|hwpx?)' if include_hwp else r'pdf'
+    # K2Web/DEXT boards (school sites, jeti): AddUploadedFile('n','name.ext','/path.ext','bytes',...)
+    for match in re.finditer(r"AddUploadedFile\(\s*'[^']*'\s*,\s*'([^']+\."+ext+r")'\s*,\s*'([^']+\."+ext+r")'\s*(?:,\s*'(\d+)')?",text,re.I):
         url=safe_url(match[2],base)
-        if url:result[url]=match[1]
-    return [{'url':u,'label':label} for u,label in result.items()]
+        if url:
+            result[url]=html.unescape(match[1])
+            if match[3]:declared[url]=int(match[3])
+    # Jeonnam (jne/jge.go.kr) boards: wFileUpload.fileAttachAddTxt("name.pdf","/upload/...pdf","bytes")
+    for match in re.finditer(r"""fileAttachAddTxt\(\s*["']([^"']+\."""+ext+r""")["']\s*,\s*["']([^"']+\."""+ext+r""")["']\s*(?:,\s*["'](\d+)["'])?""",text,re.I):
+        url=safe_url(match[2],base)
+        if url:
+            result[url]=html.unescape(match[1]).replace('+',' ')
+            if match[3]:declared[url]=int(match[3])
+    return [dict({'url':u,'label':label},**({'declared_bytes':declared[u]} if u in declared else {}))
+            for u,label in result.items()]
 
 class TransportError(Exception):
     def __init__(self,stage,details):super().__init__(stage);self.stage=stage;self.details=details
@@ -79,6 +103,8 @@ class TransportError(Exception):
 class CurlTransport:
     def __init__(self,delay=1.5):self.delay=delay;self.last={};self.blocked={}
     def fetch(self,url: str,dst: Path,max_bytes: int,referer: str='') -> dict:
+        # 90 s covers files up to 75 MB; allow about 1 s per extra MB for larger declared files.
+        max_time=90+max(0,(max_bytes-75*1024*1024)//(1024*1024))
         chain=[]
         for _ in range(5):
             url=safe_url(url)
@@ -88,10 +114,10 @@ class CurlTransport:
             time.sleep(max(0,self.delay-(time.monotonic()-self.last.get(host,0))))
             self.last[host]=time.monotonic()
             args=['curl','--proto','=https','--silent','--show-error','--connect-timeout','10',
-                  '--max-time','90','--max-filesize',str(max_bytes),'--output',str(dst),
-                  '--write-out','%{json}','--header','Accept-Encoding: identity']
+                  '--max-time',str(max_time),'--max-filesize',str(max_bytes),'--output',str(dst),
+                  '--write-out','%{json}','--header','Accept-Encoding: identity','--user-agent',USER_AGENT]
             if referer and safe_url(referer):args+=['--referer',referer]
-            try:r=subprocess.run(args+[url],capture_output=True,text=True,timeout=95)
+            try:r=subprocess.run(args+[url],capture_output=True,text=True,timeout=max_time+5)
             except subprocess.TimeoutExpired as e:
                 raise TransportError('process_timeout',{}) from e
             try:meta=json.loads(r.stdout)
@@ -140,33 +166,45 @@ class Collector:
             if url in seen:continue
             seen.add(url);row=dict(job,checked_at=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),status='pending')
             old=self.state['records'].get(url,{})
-            if kind=='pdf' and self.cached(old):
+            if kind in ('pdf','hwp','hwpx') and self.cached(old):
                 row.update(status='existing_verified',saved_path=old['saved_path'],sha256=old['sha256'],bytes=old['bytes'])
+                if 'declared_bytes' in job:row['declared_bytes_match']=(old['bytes']==job['declared_bytes'])
             else:
                 tmp=self.out/'transfer.part'
                 remaining=int(max_total_mb*1024*1024-total)
-                limit=min(75*1024*1024 if kind=='pdf' else 4*1024*1024,remaining)
+                per_file=75*1024*1024 if kind in ('pdf','hwp','hwpx') else 4*1024*1024
+                # An official post that declares a larger attachment size may raise the
+                # per-file cap up to that exact size (hard ceiling 300 MB).
+                declared=job.get('declared_bytes')
+                if kind in ('pdf','hwp','hwpx') and isinstance(declared,int) and per_file<declared<=300*1024*1024:per_file=declared
+                limit=min(per_file,remaining)
                 try:
                     if limit<=0:raise TransportError('batch_size_limit',{})
                     meta=self.transport.fetch(url,tmp,limit,job.get('parent_url',''))
                     row['transport']=meta;data=tmp.read_bytes()
                     if kind=='page' and not pdf_signature(data):
-                        text=data.decode('utf-8','replace');links=extract_links(text,meta['final_url'])
+                        text=data.decode('utf-8','replace');links=extract_links(text,meta['final_url'],bool(job.get('include_hwp')))
                         cap=job.get('max_attachments',12);links=links[:cap]
                         pattern=job.get('attachment_filter')
                         if pattern:links=[x for x in links if re.search(pattern,x['label']+' '+x['url'],re.I)]
                         row.update(status='page_scanned' if links else 'no_pdf_link',attachments=links)
                         for i,link in enumerate(links,1):
-                            child=dict(job,id=job['id']+f'-{i}',url=link['url'],kind='pdf',
-                                       title=link['label'] or job['title'],parent_url=url)
+                            lext=link['url'].rsplit('.',1)[-1].lower()
+                            child=dict(job,id=job['id']+f'-{i}',url=link['url'],kind=lext if lext in ('hwp','hwpx') else 'pdf',
+                                       title=link['label'] or job['title'],parent_url=meta['final_url'])
+                            if 'declared_bytes' in link:child['declared_bytes']=link['declared_bytes']
                             queue.appendleft(child)
                     else:
-                        if not pdf_signature(data):raise TransportError('not_a_complete_pdf',meta)
+                        ext='pdf' if kind=='pdf' else kind
+                        if kind in ('hwp','hwpx'):
+                            if not hwp_signature(data,kind):raise TransportError('not_a_valid_'+kind,meta)
+                        elif not pdf_signature(data):raise TransportError('not_a_complete_pdf',meta)
                         h=hashlib.sha256(data).hexdigest();row.update(sha256=h,bytes=len(data),
                             bibliographic_match='needs_review',redistribution='not_reviewed')
+                        if 'declared_bytes' in job:row['declared_bytes_match']=(len(data)==job['declared_bytes'])
                         if h in self.seen_hashes:row.update(status='duplicate_bytes',saved_path=self.seen_hashes[h])
                         else:
-                            rel=Path('pdfs')/filename(job.get('region','unclassified'))/(filename(job['id']+'_'+job['title'])+'__'+h[:10]+'.pdf')
+                            rel=Path('pdfs')/filename(job.get('region','unclassified'))/(filename(job['id']+'_'+job['title'])+'__'+h[:10]+'.'+ext)
                             dst=self.out/rel;dst.parent.mkdir(parents=True,exist_ok=True);tmp.replace(dst)
                             row.update(status='downloaded',saved_path=rel.as_posix());self.seen_hashes[h]=rel.as_posix();total+=len(data)
                 except TransportError as e:row.update(status=e.stage,error=e.details)

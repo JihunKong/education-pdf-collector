@@ -1,0 +1,38 @@
+[
+ {
+  "id": "A-T133-1",
+  "kind": "page",
+  "title": "첨부명 스캔 후보 T133 2026. 학교운영위원회 길잡이(관련 서식)",
+  "region": "전남_크롤링",
+  "url": "https://www.jge.go.kr/main/na/ntt/selectNttInfo.do?mi=272&nttSn=5166842",
+  "max_attachments": 12,
+  "include_hwp": true
+ },
+ {
+  "id": "A-T022-1",
+  "kind": "page",
+  "title": "첨부명 스캔 후보 T022 2025년 교육공무직원 처우개선 계획",
+  "region": "전남_크롤링",
+  "url": "https://www.jge.go.kr/open/na/ntt/selectNttInfo.do?mi=551&nttSn=5144512",
+  "max_attachments": 12,
+  "include_hwp": true
+ },
+ {
+  "id": "A-T039-1",
+  "kind": "page",
+  "title": "첨부명 스캔 후보 T039 2025. 학교교육과정 설계운영 도움자료",
+  "region": "전남_크롤링",
+  "url": "https://www.jge.go.kr/open/na/ntt/selectNttInfo.do?mi=551&nttSn=5132599",
+  "max_attachments": 12,
+  "include_hwp": true
+ },
+ {
+  "id": "A-T111-1",
+  "kind": "page",
+  "title": "첨부명 스캔 후보 T111 2026년도 맞춤형 복지제도 운영 계획",
+  "region": "전남_크롤링",
+  "url": "https://www.jge.go.kr/jgeopen/na/ntt/selectNttInfo.do?mi=2617&nttSn=5188977",
+  "max_attachments": 12,
+  "include_hwp": true
+ }
+]
