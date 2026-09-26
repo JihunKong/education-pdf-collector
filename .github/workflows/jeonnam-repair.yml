@@ -21,27 +21,27 @@ jobs:
         run: |
           actual=$(openssl x509 -in keys/transport_session_cert.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':')
           test "$actual" = D13A89B878A0743CCDD2EE834998FEE337ECE2362236F2F9A55BA4D9A0BCFF60
-      - name: Bounded transport tests with verified TLS
+      - name: Test observed current official hostnames
         run: |
           python3 - <<'PY'
-          import json, subprocess, time
+          import json, subprocess, time, re
           from pathlib import Path
           out=Path('output'); out.mkdir(exist_ok=True)
-          source='https://www.jne.go.kr/open/na/ntt/selectNttInfo.do?mi=551&nttSn=5135663'
           tests=[
-            ('jne_default',source,[]),
-            ('jne_ipv4',source,['--ipv4']),
-            ('jne_tls12',source,['--ipv4','--http1.1','--tlsv1.2','--tls-max','1.2']),
-            ('jne_root','https://www.jne.go.kr/main/main.do',['--ipv4']),
-            ('jne_robots','https://www.jne.go.kr/robots.txt',['--ipv4']),
+            ('jge_portal','https://www.jge.go.kr/'),
+            ('jge_bare','https://jge.go.kr/'),
+            ('hscredit','https://hscredit.jne.go.kr/'),
+            ('jnei_school','https://www.jnei.go.kr/dolsanjungang_ms/'),
+            ('gen_credit','https://cic.gen.go.kr/high/main/main.php'),
+            ('moe_control','https://www.moe.go.kr/robots.txt'),
           ]
           rows=[]
-          for name,url,extra in tests:
-            cmd=['curl','--proto','=https','--connect-timeout','12','--max-time','35','--max-filesize','2097152','--silent','--show-error','-D',str(out/(name+'.headers')),'-o',str(out/(name+'.body')),'--write-out','%{json}',*extra,url]
-            r=subprocess.run(cmd,capture_output=True,text=True,timeout=40)
+          for name,url in tests:
+            cmd=['curl','--proto','=https','--connect-timeout','10','--max-time','25','--max-filesize','2097152','--silent','--show-error','-D',str(out/(name+'.headers')),'-o',str(out/(name+'.body')),'--write-out','%{json}',url]
+            r=subprocess.run(cmd,capture_output=True,text=True,timeout=30)
             try: d=json.loads(r.stdout)
             except ValueError: d={}
-            keys=['http_code','remote_ip','time_namelookup','time_connect','time_appconnect','time_starttransfer','time_total','size_download','content_type','errormsg']
+            keys=['http_code','remote_ip','time_namelookup','time_connect','time_appconnect','time_starttransfer','time_total','size_download','content_type','errormsg','redirect_url']
             row={k:d.get(k) for k in keys}; row.update(id=name,url=url,curl_exit=r.returncode,stderr=r.stderr[:500])
             rows.append(row); print(json.dumps(row),flush=True)
             (out/'transport_diagnostics.json').write_text(json.dumps(rows,indent=2),encoding='utf-8')
