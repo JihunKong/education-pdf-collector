@@ -62,16 +62,26 @@ class LinkParser(HTMLParser):
 
 def extract_links(text: str, base: str) -> list:
     """Only literal href/DEXT upload paths; do not execute or guess JavaScript."""
-    parser=LinkParser(); parser.feed(text); result={}
+    parser=LinkParser(); parser.feed(text); result={}; declared={}
+    page=safe_url(base)
     for href,label,js in parser.links:
         if NONPDF.search(label): continue
         url=safe_url(href,base)
-        if url and (DOWNLOAD.search(url) or '.pdf' in label.lower()):result[url]=label.strip()
+        # A preview/self link (href="#" or the post itself) is not an attachment.
+        if not url or url==page: continue
+        if DOWNLOAD.search(url) or '.pdf' in label.lower():result[url]=label.strip()
     # These paths occur verbatim in the official page's upload initialization.
     for match in re.finditer(r"AddUploadedFile\(\s*'[^']*'\s*,\s*'([^']+\.pdf)'\s*,\s*'([^']+\.pdf)'",text,re.I):
         url=safe_url(match[2],base)
         if url:result[url]=match[1]
-    return [{'url':u,'label':label} for u,label in result.items()]
+    # Jeonnam (jne/jge.go.kr) boards: wFileUpload.fileAttachAddTxt("name.pdf","/upload/...pdf","bytes")
+    for match in re.finditer(r"""fileAttachAddTxt\(\s*["']([^"']+\.pdf)["']\s*,\s*["']([^"']+\.pdf)["']\s*(?:,\s*["'](\d+)["'])?""",text,re.I):
+        url=safe_url(match[2],base)
+        if url:
+            result[url]=html.unescape(match[1]).replace('+',' ')
+            if match[3]:declared[url]=int(match[3])
+    return [dict({'url':u,'label':label},**({'declared_bytes':declared[u]} if u in declared else {}))
+            for u,label in result.items()]
 
 class TransportError(Exception):
     def __init__(self,stage,details):super().__init__(stage);self.stage=stage;self.details=details
@@ -158,12 +168,14 @@ class Collector:
                         row.update(status='page_scanned' if links else 'no_pdf_link',attachments=links)
                         for i,link in enumerate(links,1):
                             child=dict(job,id=job['id']+f'-{i}',url=link['url'],kind='pdf',
-                                       title=link['label'] or job['title'],parent_url=url)
+                                       title=link['label'] or job['title'],parent_url=meta['final_url'])
+                            if 'declared_bytes' in link:child['declared_bytes']=link['declared_bytes']
                             queue.appendleft(child)
                     else:
                         if not pdf_signature(data):raise TransportError('not_a_complete_pdf',meta)
                         h=hashlib.sha256(data).hexdigest();row.update(sha256=h,bytes=len(data),
                             bibliographic_match='needs_review',redistribution='not_reviewed')
+                        if 'declared_bytes' in job:row['declared_bytes_match']=(len(data)==job['declared_bytes'])
                         if h in self.seen_hashes:row.update(status='duplicate_bytes',saved_path=self.seen_hashes[h])
                         else:
                             rel=Path('pdfs')/filename(job.get('region','unclassified'))/(filename(job['id']+'_'+job['title'])+'__'+h[:10]+'.pdf')

@@ -67,4 +67,19 @@ class Tests(unittest.TestCase):
                 self.assertEqual(first.exception.stage,'tcp_connect_failure')
                 with self.assertRaises(TransportError) as second:t.fetch(URL+'?2',Path(d)/'tmp',100)
                 self.assertEqual(second.exception.stage,'host_deferred');self.assertEqual(run.call_count,1)
+    def test_jeonnam_file_attach(self):
+        page='https://www.jge.go.kr/open/na/ntt/selectNttInfo.do?mi=551&nttSn=5135663'
+        s=('<a href="'+page.replace('&','&amp;')+'">미리보기 (전남)고교학점제+운영+안내서.pdf</a>'
+           '<script>wFileUpload.fileAttachAddTxt("(전남)고교학점제+운영+안내서.pdf","/upload/open/na/bbs_297/ntt_5135663/doc_x.pdf","10281996");</script>')
+        links=extract_links(s,page)
+        self.assertEqual(len(links),1)
+        self.assertEqual(links[0]['url'],'https://www.jge.go.kr/upload/open/na/bbs_297/ntt_5135663/doc_x.pdf')
+        self.assertEqual(links[0]['label'],'(전남)고교학점제 운영 안내서.pdf')
+        self.assertEqual(links[0]['declared_bytes'],10281996)
+    def test_declared_bytes_recorded(self):
+        with tempfile.TemporaryDirectory() as d:
+            p='https://www.jge.go.kr/page';u='https://www.jge.go.kr/upload/a.pdf'
+            body=('<script>x.fileAttachAddTxt("a.pdf","/upload/a.pdf","%d");</script>'%len(PDF)).encode()
+            c=Collector(Path(d),Fake({p:body,u:PDF}));self.assertEqual(c.run([dict(JOB,url=p,kind='page')]),0)
+            self.assertTrue(c.rows[1]['declared_bytes_match'])
 if __name__=='__main__':unittest.main()
