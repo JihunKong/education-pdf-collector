@@ -2,7 +2,7 @@ import sys, tempfile, unittest, json, subprocess
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from collect_batch import Collector, CurlTransport, TransportError, safe_url, pdf_signature, extract_links, filename
+from collect_batch import Collector, CurlTransport, TransportError, safe_url, pdf_signature, extract_links, filename, hwp_signature
 PDF=b'%PDF-1.7\nSynthetic fixture, not a real document\n%%EOF\n'
 URL='https://www.moe.go.kr/a.pdf'
 JOB={'id':'T1','url':URL,'kind':'pdf','title':'fixture','region':'test'}
@@ -105,4 +105,21 @@ class Tests(unittest.TestCase):
             f2.fetch=lambda u,dst,m,r='':(seen2.append(m),o2(u,dst,m,r))[1]
             Collector(Path(d),f2).run([dict(JOB,url=URL+'?b',declared_bytes=500*1024*1024)],max_total_mb=1000)
             self.assertEqual(seen2,[75*1024*1024])
+    def test_hwp_only_when_requested(self):
+        page='https://www.jge.go.kr/page'
+        s='<script>w.fileAttachAddTxt("계획.hwpx","/upload/a.hwpx","900");w.fileAttachAddTxt("계획.pdf","/upload/a.pdf","800");</script>'
+        self.assertEqual([x['url'][-4:] for x in extract_links(s,page)],['.pdf'])
+        self.assertEqual(sorted(x['url'].rsplit('.',1)[1] for x in extract_links(s,page,True)),['hwpx','pdf'])
+    def test_hwp_signature(self):
+        self.assertTrue(hwp_signature(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'+b'0'*600,'hwp'))
+        self.assertTrue(hwp_signature(b'PK\x03\x04'+b'mimetypeapplication/hwp+zip'+b'0'*600,'hwpx'))
+        self.assertFalse(hwp_signature(b'<html>blocked</html>'+b' '*600,'hwp'))
+    def test_hwp_original_saved(self):
+        with tempfile.TemporaryDirectory() as d:
+            p='https://www.jge.go.kr/page';u='https://www.jge.go.kr/upload/a.hwpx'
+            hw=b'PK\x03\x04'+b'mimetypeapplication/hwp+zip'+b'0'*600
+            body=('<script>x.fileAttachAddTxt("a.hwpx","/upload/a.hwpx","%d");</script>'%len(hw)).encode()
+            c=Collector(Path(d),Fake({p:body,u:hw}));self.assertEqual(c.run([dict(JOB,url=p,kind='page',include_hwp=True)]),0)
+            self.assertTrue(c.rows[1]['saved_path'].endswith('.hwpx'));self.assertTrue(c.rows[1]['declared_bytes_match'])
+            c2=Collector(Path(d),Fake({p:body}));self.assertEqual(c2.run([dict(JOB,url=p,kind='page')]),2)
 if __name__=='__main__':unittest.main()
