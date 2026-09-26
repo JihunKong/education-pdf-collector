@@ -8,6 +8,7 @@ log=json.load(open('fix_joined_log.json')) if os.path.exists('fix_joined_log.jso
 for x in inv:
     if x['ext']!='pdf': continue
     d='cache/'+x['sha256'][:12]+'/'
+    if not os.path.isdir(d): continue
     for f in sorted(os.listdir(d)):
         if not re.match(r'p\d{4}\.md$',f) or d+f in log: continue
         t=open(d+f,encoding='utf-8').read(); h,r=jr(t)
