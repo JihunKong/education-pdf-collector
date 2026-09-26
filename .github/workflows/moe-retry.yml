@@ -1,0 +1,53 @@
+name: Retry only pending MOE PDFs
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix-jeonnam-20260926]
+    paths: ['.github/workflows/moe-retry.yml']
+permissions:
+  contents: read
+jobs:
+  retry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build queue of failed source attachments only
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          src='https://www.moe.go.kr/boardCnts/viewRenew.do?boardID=72782&boardSeq=105180&lev=0&m=030215&opType=N&s=moe&statusYN=W'
+          jobs=[]
+          for id,seq,title in [('A001-main','33788b025def233c9f2a0ca2c5d9b187','2026 초등돌봄교육 늘봄학교 운영 길라잡이'),('A001-forms','f954e31ccd17667eb4864aa027d01de4','2026 초등돌봄교육 늘봄학교 운영 길라잡이 서식편 수정')]:
+            jobs.append(dict(id=id,kind='pdf',title=title,region='교육부',url='https://www.moe.go.kr/boardCnts/fileDown.do?m=030215&s=moe&fileSeq='+seq,parent_url=src))
+          Path('retry.json').write_text(json.dumps(jobs,ensure_ascii=False),encoding='utf-8')
+          PY
+      - name: Fetch only missing PDF attachments
+        id: collect
+        continue-on-error: true
+        run: python3 scripts/collect_batch.py --manifest retry.json --output output --max-items 2 --max-total-mb 25
+      - name: Encrypt result
+        if: ${{ always() && hashFiles('output/state.json') != '' }}
+        run: python3 -c "from pathlib import Path;from scripts.seal_results import seal;seal(Path('output'),Path('keys/transport_session_cert.pem'),Path('sealed/results.cms'))"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ always() && hashFiles('sealed/results.cms') != '' }}
+        with:
+          name: sealed-moe-retry-${{ github.run_id }}
+          path: sealed/
+          retention-days: 3
+          if-no-files-found: error
+      - name: Preserve accurate outcome
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('output/run_summary.json').read_text());print(r)
+          raise SystemExit(0 if r['status']=='complete_selected_batch' else 2)
+          PY
+      - name: Cleanup plaintext
+        if: always()
+        run: rm -rf -- output/
