@@ -86,4 +86,11 @@ class Tests(unittest.TestCase):
             f2=Fake({p:body});c2=Collector(Path(d),f2);self.assertEqual(c2.run([dict(JOB,url=p,kind='page')]),0)
             self.assertEqual(c2.rows[1]['status'],'existing_verified');self.assertTrue(c2.rows[1]['declared_bytes_match'])
             self.assertEqual(f2.calls,[p])
+    def test_identifying_user_agent(self):
+        with tempfile.TemporaryDirectory() as d:
+            response=subprocess.CompletedProcess([],28,json.dumps({'http_code':0,'time_connect':0}),'Timeout')
+            with patch('collect_batch.subprocess.run',return_value=response) as run:
+                with self.assertRaises(TransportError):CurlTransport(delay=0).fetch(URL,Path(d)/'tmp',100)
+                args=run.call_args[0][0];i=args.index('--user-agent')
+                self.assertTrue(args[i+1].startswith('education-pdf-collector/'))
 if __name__=='__main__':unittest.main()

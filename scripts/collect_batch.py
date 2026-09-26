@@ -16,6 +16,9 @@ APPROVED = {'moe.go.kr','jne.go.kr','jne.kr','jge.go.kr','gen.go.kr','cbe.go.kr'
             'gbe.kr','gne.go.kr','jje.go.kr','jnei.go.kr'}
 DOWNLOAD = re.compile(r'\.pdf(?:$|[?#])|filedown|download|downfile|downpost', re.I)
 NONPDF = re.compile(r'\.(?:hwp|hwpx|zip|exe|msi|dmg|docx?|xlsx?|pptx?)(?:\b|$)',re.I)
+# Some school boards reject curl's default agent with 400 RequestBlocked.
+# Identify the tool honestly instead of impersonating a browser.
+USER_AGENT = 'education-pdf-collector/1.1 (+https://github.com/JihunKong/education-pdf-collector)'
 UNSAFE = re.compile(r'login|logout|signin|signout|delete|remove|insert|update|register|write\.do',re.I)
 
 def safe_url(url: str, base: str='') -> str:
@@ -99,7 +102,7 @@ class CurlTransport:
             self.last[host]=time.monotonic()
             args=['curl','--proto','=https','--silent','--show-error','--connect-timeout','10',
                   '--max-time','90','--max-filesize',str(max_bytes),'--output',str(dst),
-                  '--write-out','%{json}','--header','Accept-Encoding: identity']
+                  '--write-out','%{json}','--header','Accept-Encoding: identity','--user-agent',USER_AGENT]
             if referer and safe_url(referer):args+=['--referer',referer]
             try:r=subprocess.run(args+[url],capture_output=True,text=True,timeout=95)
             except subprocess.TimeoutExpired as e:
