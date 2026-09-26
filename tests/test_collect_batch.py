@@ -122,4 +122,10 @@ class Tests(unittest.TestCase):
             c=Collector(Path(d),Fake({p:body,u:hw}));self.assertEqual(c.run([dict(JOB,url=p,kind='page',include_hwp=True)]),0)
             self.assertTrue(c.rows[1]['saved_path'].endswith('.hwpx'));self.assertTrue(c.rows[1]['declared_bytes_match'])
             c2=Collector(Path(d),Fake({p:body}));self.assertEqual(c2.run([dict(JOB,url=p,kind='page')]),2)
+    def test_k2_uploaded_hwp(self):
+        page='https://jeti.jge.go.kr/jeti_da/na/ntt/selectNttInfo.do?mi=1&nttSn=2'
+        s="<script>DEXT5UPLOAD.AddUploadedFile('1', '계획.hwp', '/data/attach_data/x/doc_1.hwp', '166912', 'k', uploadID);</script>"
+        self.assertEqual(extract_links(s,page),[])
+        l=extract_links(s,page,True)
+        self.assertEqual(l[0]['url'],'https://jeti.jge.go.kr/data/attach_data/x/doc_1.hwp');self.assertEqual(l[0]['declared_bytes'],166912)
 if __name__=='__main__':unittest.main()

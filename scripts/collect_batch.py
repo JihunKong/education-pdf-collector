@@ -81,11 +81,14 @@ def extract_links(text: str, base: str, include_hwp: bool=False) -> list:
         if not url or url==page: continue
         if DOWNLOAD.search(url) or '.pdf' in label.lower():result[url]=label.strip()
     # These paths occur verbatim in the official page's upload initialization.
-    for match in re.finditer(r"AddUploadedFile\(\s*'[^']*'\s*,\s*'([^']+\.pdf)'\s*,\s*'([^']+\.pdf)'",text,re.I):
-        url=safe_url(match[2],base)
-        if url:result[url]=match[1]
-    # Jeonnam (jne/jge.go.kr) boards: wFileUpload.fileAttachAddTxt("name.pdf","/upload/...pdf","bytes")
     ext=r'(?:pdf|hwpx?)' if include_hwp else r'pdf'
+    # K2Web/DEXT boards (school sites, jeti): AddUploadedFile('n','name.ext','/path.ext','bytes',...)
+    for match in re.finditer(r"AddUploadedFile\(\s*'[^']*'\s*,\s*'([^']+\."+ext+r")'\s*,\s*'([^']+\."+ext+r")'\s*(?:,\s*'(\d+)')?",text,re.I):
+        url=safe_url(match[2],base)
+        if url:
+            result[url]=html.unescape(match[1])
+            if match[3]:declared[url]=int(match[3])
+    # Jeonnam (jne/jge.go.kr) boards: wFileUpload.fileAttachAddTxt("name.pdf","/upload/...pdf","bytes")
     for match in re.finditer(r"""fileAttachAddTxt\(\s*["']([^"']+\."""+ext+r""")["']\s*,\s*["']([^"']+\."""+ext+r""")["']\s*(?:,\s*["'](\d+)["'])?""",text,re.I):
         url=safe_url(match[2],base)
         if url:
