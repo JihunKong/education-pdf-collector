@@ -1,45 +1,15 @@
-name: Official PDF transport test (encrypted results)
+name: Legacy preflight - retired
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/pdf-preflight.yml'
-      - 'scripts/**'
-      - 'keys/transport_session_cert.pem'
 permissions:
   contents: read
-concurrency:
-  group: pdf-transport-test
-  cancel-in-progress: false
 jobs:
-  test:
-    if: ${{ github.repository == 'JihunKong/education-pdf-collector' }}
+  notice:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 1
     steps:
-      - name: Checkout collector code and public certificate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Offline unit tests
-        run: python3 -m unittest discover -s scripts -p 'test_public_pdf_probe.py' -v
-      - name: Fetch observed official attachment URLs
-        run: python3 scripts/recover_official.py
-      - name: Encrypt result files with session recipient; fail closed
-        if: ${{ always() && hashFiles('output/**') != '' }}
+      - name: Explain the replacement without repeating downloads
         run: |
-          python3 -c "from pathlib import Path; from scripts.seal_results import seal; seal(Path('output'), Path('keys/transport_session_cert.pem'), Path('sealed/results.cms'))"
-      - name: Preserve only encrypted results
-        if: ${{ always() && hashFiles('sealed/results.cms') != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sealed-pdf-transport-${{ github.run_id }}
-          path: |
-            sealed/results.cms
-            sealed/results.sha256
-          retention-days: 3
-          if-no-files-found: error
-      - name: Remove plaintext temporary output
-        if: ${{ always() }}
-        run: rm -rf -- output/
+          echo 'This legacy two-URL download probe is retired.'
+          echo 'Use Collect official PDF batch with checkpoints, or scripts/collect_batch.py.'
+          echo 'This notice does not mean that any PDF was collected.'
