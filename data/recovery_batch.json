@@ -1,0 +1,10 @@
+[
+  {"id":"T001-page","kind":"page","title":"2025 전남 고교학점제 운영 안내서 게시물","region":"전남","url":"https://www.jne.go.kr/open/na/ntt/selectNttInfo.do?mi=551&nttSn=5135663","max_attachments":4},
+  {"id":"T001-pdf","kind":"pdf","title":"2025 전남 고교학점제 운영 안내서 원본 후보","region":"전남","url":"https://www.jne.go.kr/upload/open/na/bbs_297/ntt_5135663/doc_23e1c347-f1e2-4bb8-b232-3a0619117eac1739a1620b90034.pdf","parent_url":"https://www.jne.go.kr/open/na/ntt/selectNttInfo.do?mi=551&nttSn=5135663"},
+  {"id":"A001","kind":"page","title":"2026 초등돌봄교육 늘봄학교 운영 길라잡이 및 서식","region":"교육부","url":"https://www.moe.go.kr/boardCnts/viewRenew.do?boardID=72782&boardSeq=105180&lev=0&m=030215&opType=N&s=moe&statusYN=W","max_attachments":4},
+  {"id":"A002","kind":"page","title":"교육부 2025 학교운영위원회 길잡이 충북 재게시","region":"교육부_충북재게시","url":"https://www.cbe.go.kr/dept-15/na/ntt/selectNttInfo.do?mi=11079&nttSn=1557977","max_attachments":3},
+  {"id":"A003","kind":"pdf","title":"2025학년도 고교학점제 운영 안내서 광주 게시본","region":"광주게시본","url":"https://cic.gen.go.kr/high/xboard/board.php?mode=downpost&tbnum=14&sCat=0&page=1&keyset=&searchword=&number=335&file_num=366","parent_url":"https://cic.gen.go.kr/high/xboard/board.php?mode=view&number=335&page=1&sCat=0&tbnum=14","note":"게시물 제목 2025학년도, 첨부파일명 2024고교학점제운영안내서(1).pdf. 전남판과 동일하다고 판단하지 않음."},
+  {"id":"A004","kind":"pdf","title":"2026 경기 감사 관련 지침 공식 후보","region":"경기","url":"https://www.goe.go.kr/resource/goe/na/bbs_2675/2026/03/7360f9f2-b08b-49d9-b774-af6e8b937b4d.pdf","note":"표지의 정확한 제목과 연도 확인 필요"},
+  {"id":"A005","kind":"pdf","title":"2026 충북 학적 업무 매뉴얼 공식 후보","region":"충북","url":"https://www.cbe.go.kr/upload/dept-19/na/bbs_2023/2026/03/D4A56D3B-A3AC-1AD5-8AF9-99878BB96805.pdf","note":"표지의 정확한 제목과 학교급 확인 필요"},
+  {"id":"A006","kind":"pdf","title":"2026 부산 고등학교 학업성적관리 지침 공식 후보","region":"부산","url":"https://www.pen.go.kr/upload/dep07/na/bbs_2629/ntt_1164293/doc_dc66vf893%3D7fvf3%3D45vbd%3D92v0e%3D15bbvdd97vf056_v9335.pdf","note":"전남판의 대체본으로 계산하지 않음"}
+]
