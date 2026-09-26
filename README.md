@@ -1,55 +1,66 @@
 # Education PDF collector
 
-공식 교육 문서 수집을 위한 **공개 코드 저장소**입니다. PDF 원본을 공개 배포하는 저장소가 아닙니다.
+공식 교육 문서 수집을 위한 공개 **코드** 저장소입니다. PDF 원문을 공개 배포하는 저장소가 아닙니다.
 
-## 검증된 결과 — 2026-09-24
+## 2026-09-26 수정 결과
 
-[교육부 회수 실행](https://github.com/JihunKong/education-pdf-collector/actions/runs/35977100576)은 성공했습니다.
-교육부 공식 게시물 105372의 첨부 PDF 3개를 실제로 받아 암호화하고, 수신 환경에서 복호화 및 검증했습니다.
+반복 실패 처리와 잘못된 부분 성공 판정을 수정하고 새 PDF 7개, 실제 PDF 1,250페이지를 회수·검증했습니다. 기존에 제공한 교육부 2026 학교생활기록부 기재요령 3종을 다시 성과로 계산하지 않았습니다.
 
-| 문서 | PDF 페이지 | 바이트 | SHA-256 |
-|---|---:|---:|---|
-| 2026 학교생활기록부 기재요령(초등학교) | 161 | 4906572 | 72dd61629c0f841bbc75adbf9250130a71d44cf2fff2a8568bd6eb905ff2b496 |
-| 2026 학교생활기록부 기재요령(중학교) | 173 | 4405661 | 186cfd0355ae64e766640a4df3f7bd94179dc824203edab4c97ef499eaf47578 |
-| 2026 학교생활기록부 기재요령(고등학교) | 223 | 4926475 | c122b02eb6d230976c42474cc5dd96937c084dffd2ea29ce597bbb71d5a974cd |
+**전남교육청 서버의 외부 접속 문제와 원래 요청 160개의 전체 수집은 여전히 미완료입니다.** 다른 지역·연도의 자료를 전남 요청 판본으로 대체하지 않습니다.
 
-총 557쪽. 바이트 수와 해시, PDF 파싱, 전체 페이지 저해상도 렌더링, 표지를 확인했습니다.
-전체 본문 검수, 최신 개정 여부 조사, 수강생 재배포 허락까지 완료했다는 뜻은 아닙니다.
+측정 로그, 시험 결과, 7개 문서명·페이지·SHA-256은 [수정 및 검증 기록](docs/repair-20260926.md)에 있습니다.
 
-원게시물: https://www.moe.go.kr/boardCnts/viewRenew.do?boardID=316&boardSeq=105372&lev=0&m=0302&opType=N&page=1&s=moe&searchType=null&statusYN=W
-원게시물 이용조건: 공공누리 출처표시·상업적 이용금지·변경금지. 배포 목적별 별도 확인이 필요합니다.
+## 사용
 
-## 남은 장애와 현재 배치
-
-인천의 기존 직접 PDF 주소는 PDF가 아니라 다른 페이지로 이동하는 **77바이트 HTML**을 반환했습니다. 그 응답을 PDF로 저장하지 않고 교육부 원게시물의 실제 첨부 경로를 이용했습니다.
-
-[전남 후속 배치](https://github.com/JihunKong/education-pdf-collector/actions/runs/35977574220)에서는 2025 고교학점제 안내서 게시물과 2026 교육공무원 인사실무 후보 PDF가 각각 타임아웃으로 실패했습니다. 삭제·권한차단·문서 부존재로 단정하지 않습니다.
-현재 `scripts/recover_official.py`는 이 두 전남 주소를 한 번씩 검사합니다. 교육부 성공 사례의 코드는 커밋 `1209905330723b787334e825a99ef0fc4d9b0340`에 보존되어 있습니다. 원래 요청 160개의 전체 수집은 미완료입니다.
-
-## 공개 저장소에서 결과 보호
-
-- PDF·HWP·원문 HTML·개인 Drive 자료·개인키는 git에 올리지 않습니다.
-- 실행 결과 ZIP은 OpenSSL CMS AES-256-GCM / RSA-OAEP-SHA256으로 암호화한 뒤 암호문만 Actions artifact로 3일 보관합니다.
-- **현재 워크플로의 수신 인증서는 `keys/transport_session_cert.pem`입니다.** `keys/recipient_cert.pem`은 이전 시험용 공개 인증서로, 현재 결과의 복호화 기준이 아닙니다.
-- 대응하는 개인키는 저장소나 Actions에 제공하지 않으며 수신자가 개인적으로 보관합니다. 암호화가 실패하면 원문을 대신 업로드하지 않습니다.
-- 인증서 검증을 해제하거나 CAPTCHA·로그인 제한을 우회하지 않습니다. 토큰과 브라우저 쿠키도 수집하지 않습니다.
-
-## 실행과 결과 회수
-
-Ubuntu 24.04에서 최대 5분으로 제한합니다. 예약 실행은 없습니다. 지정된 코드 경로를 main에 변경하거나 Actions의 Run workflow로 실행합니다. 외부 pull request에서는 수집하지 않습니다.
+Python 3.9 이상, curl이 필요합니다. 인증서 검증 해제, 브라우저 쿠키 수집 또는 로그인 우회는 하지 않습니다.
 
 ```bash
-python3 -m unittest discover -s scripts -p 'test_public_pdf_probe.py' -v
-python3 scripts/recover_official.py
-python3 -c "from pathlib import Path; from scripts.seal_results import seal; seal(Path('output'), Path('keys/transport_session_cert.pem'), Path('sealed/results.cms'))"
+python3 -m unittest discover -s tests -v
+python3 scripts/collect_batch.py --manifest data/recovery_batch.json --output output --max-items 24 --max-total-mb 200
 ```
 
-수신자는 별도로 전달된 개인키 백업과 OpenSSL 3으로 복호화합니다.
+`data/recovery_batch.json`은 검증 시험에 사용한 제한된 공식 출처 목록입니다. 전국 모든 게시판을 탐색하거나 원래 160개 파일을 모두 자동으로 찾는 목록이 아닙니다. 알려진 게시물에서 실제 첨부 링크를 찾고, 직접 PDF 주소를 검증하여 내려받습니다.
+
+종료 코드 **0은 선택한 배치 완료**, **2는 일부 실패·보류·대기**입니다. GitHub에서 부분 배치가 빨간색으로 종료되어도 받은 PDF와 실패 기록은 암호화된 결과에 보존합니다. 단순히 실행 성공 여부로 수집 완료를 판단하지 마세요.
+
+## 저장·중복 제거·재개
+
+- `output/pdfs/`: 원본 PDF
+- `output/state.json`: 파일별 상태와 미처리 목록
+- `output/run_summary.json`, `output/run_records.json`: 이번 실행 결과
+- `output/retry_queue.json`: 실패·대기 항목
+
+**같은 로컬 output 폴더를 유지한 재실행**에서는 파일 해시가 일치하면 다운로드를 건너뜁니다. 손상 파일은 다시 요청하고, 다른 주소의 동일 바이트 PDF는 중복 저장하지 않습니다. 연결 실패 또는 접근 제한이 확인된 호스트는 같은 실행에서 추가 요청을 보류하고 나머지 출처를 처리합니다.
+
+새 GitHub 실행기는 이전 output 폴더를 자동 복원하지 않습니다. 실행 간 재개에는 이전 결과 복원 또는 실패 항목만 선택한 목록이 필요합니다. 이번 실증에서는 5개를 회수한 뒤 실패한 교육부 첨부 2개만 따로 받아 중복 다운로드를 피했습니다.
+
+## GitHub Actions
+
+기본 브랜치에서는 `Collect official PDF batch with checkpoints`를 수동 실행합니다. 예약 실행은 없습니다. 진단·검증용 워크플로의 자동 push 조건은 `fix-jeonnam-20260926` 시험 브랜치의 해당 워크플로 파일로만 제한되어 있습니다.
+
+기존 `pdf-preflight.yml`의 main 변경 시 두 전남 주소만 반복 요청하던 자동 실행은 폐기했습니다. `scripts/recover_official.py` 등 이전 시험 코드는 재현을 위해 남겨 두었으며 새 기본 수집기가 아닙니다.
+
+## 검증 범위
+
+오프라인 회귀 테스트 16개가 로컬 및 GitHub에서 통과했습니다. 별도 회수 환경에서 신규 7개 PDF의 해시 대조, PDF 파싱, 모든 페이지 저해상도 렌더링과 표지 확인을 수행했습니다. 본문·표·각주 전수 검수, 최신성, 원래 요청 판본과의 일치, 재배포 권한을 자동 보장하지는 않습니다.
+
+## 전남에 남은 문제
+
+시험한 www.jne.go.kr 주소는 GitHub 실행기에서 DNS 이후 TCP 443 연결에 실패했습니다. IPv4나 TLS 설정 변경으로 해결되지 않았습니다. 일부 전남 학교 재게시 주소는 400 RequestBlocked를 반환했습니다. 해외 IP 제한·사이트 전체 장애·이전 원인 중 어느 것인지 확정하지 않았습니다.
+
+정상 접속되는 사용자 로컬 환경이나 다른 공식 공개 경로에서 확인이 필요합니다. 사용자 컴퓨터·크롬에서 실제로 실행한 것은 아닙니다. 별도 제공한 맥 실행팩에는 전남 14개, 알려진 공식 출처 전체 41개, 원래 요청 파일명 160개 대조표가 포함됩니다.
+
+## 원문·개인키 보호
+
+PDF·HWP·원문 HTML·개인 Drive 자료·개인키는 공개 git에 올리지 않습니다. CI 결과는 OpenSSL CMS AES-256-GCM / RSA-OAEP-SHA256으로 암호화하고 암호문만 artifact로 3일 보관합니다. 현재 수신 인증서는 `keys/transport_session_cert.pem`이며 기존 인증서를 유지했습니다. 개인키는 CI에 제공하지 않습니다.
+
+암호화 실패 시 원본을 대신 업로드하지 않습니다. 로컬 output 폴더에는 평문 원본이 있으므로 공개 저장소에 커밋하지 마세요.
+
+수신자는 해당 인증서와 짝이 맞는 개인키로 복호화합니다.
 
 ```bash
-openssl cms -decrypt -binary -inform DER \
-  -in results.cms -recip public_cert.pem \
-  -inkey private.pem -out recovered.zip
+openssl cms -decrypt -binary -inform DER -in results.cms \
+  -recip public_cert.pem -inkey private.pem -out recovered.zip
 ```
 
-개인키와 복호화한 원본 ZIP은 공개 저장소, 이슈, 공개 게시판에 올리지 마세요.
+수집은 배포 허락을 뜻하지 않습니다. 교육부 늘봄학교 원게시물에는 출처표시·상업적 이용금지 조건이 표시됩니다. 다른 문서도 개별 이용조건을 확인해야 합니다. 유료 강의 재배포와 MD 본문 변환은 수행하지 않았습니다.

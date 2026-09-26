@@ -1,0 +1,82 @@
+name: Jeonnam transport diagnosis and repair
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix-jeonnam-20260926]
+    paths: ['.github/workflows/jeonnam-repair.yml']
+permissions:
+  contents: read
+concurrency:
+  group: jeonnam-repair
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Check existing recipient
+        run: |
+          actual=$(openssl x509 -in keys/transport_session_cert.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':')
+          test "$actual" = D13A89B878A0743CCDD2EE834998FEE337ECE2362236F2F9A55BA4D9A0BCFF60
+      - name: Fetch observed public source URLs
+        run: |
+          python3 - <<'PY'
+          import json, subprocess, time, hashlib
+          from pathlib import Path
+          out=Path('output'); out.mkdir(exist_ok=True)
+          tests=[
+            ('jne_legacy_http','http://www.jne.go.kr/'),
+            ('hscredit_legacy_http','http://hscredit.jne.go.kr/'),
+            ('T003_teacher_workbook_candidate','https://nagan.ms.jne.kr/data/attach_data/goheung/nagan_ms/k2board/na/bbs_117901/ntt_1800609366/doc_35b1v9ae4%3Df1v6c%3D46v52%3D83v0d%3Dcb66vf98bv8ecc_v9241.pdf'),
+            ('T006_student_workbook_candidate','https://juam.ms.jne.kr/data/attach_data/goheung/juam_ms/k2board/na/bbs_101905/ntt_1800586398/doc_f482vf67d%3Da7v88%3D43v61%3D8fv2f%3D476av7824v44d6_v44.pdf'),
+            ('credit_operation_source','https://cic.gen.go.kr/high/xboard/board.php?mode=view&number=335&page=1&sCat=0&tbnum=14'),
+            ('moe_care_source','https://www.moe.go.kr/boardCnts/viewRenew.do?boardID=72782&boardSeq=105180&lev=0&m=030215&opType=N&s=moe&statusYN=W'),
+            ('cbe_council_source','https://www.cbe.go.kr/dept-15/na/ntt/selectNttInfo.do?mi=11079&nttSn=1557977'),
+          ]
+          rows=[]
+          for name,url in tests:
+            path=out/(name+'.body')
+            cmd=['curl','--proto','=http,https','--connect-timeout','10','--max-time','60','--max-filesize','20971520','--silent','--show-error','-D',str(out/(name+'.headers')),'-o',str(path),'--write-out','%{json}',url]
+            r=subprocess.run(cmd,capture_output=True,text=True,timeout=65)
+            try: d=json.loads(r.stdout)
+            except ValueError: d={}
+            keys=['http_code','remote_ip','time_namelookup','time_connect','time_appconnect','time_starttransfer','time_total','size_download','content_type','errormsg','redirect_url']
+            row={k:d.get(k) for k in keys}; row.update(id=name,url=url,curl_exit=r.returncode,stderr=r.stderr[:500])
+            if path.exists():
+              data=path.read_bytes()
+              row['sha256']=hashlib.sha256(data).hexdigest()
+              if r.returncode==0 and row['http_code']==200 and data.startswith(b'%PDF-') and b'%%EOF' in data[-4096:]:
+                final=path.with_suffix('.pdf'); path.rename(final); row['saved_pdf']=final.name
+            rows.append(row); print(json.dumps({k:row.get(k) for k in ['id','http_code','curl_exit','size_download','redirect_url','saved_pdf']}),flush=True)
+            (out/'transport_diagnostics.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+            time.sleep(2)
+          PY
+      - name: Encrypt originals and diagnostic responses
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import subprocess,zipfile,hashlib,tempfile
+          from pathlib import Path
+          files=[p for p in Path('output').iterdir() if p.is_file() and not p.is_symlink()]
+          assert files and sum(p.stat().st_size for p in files)<100*1024*1024
+          Path('sealed').mkdir(exist_ok=True)
+          with tempfile.TemporaryDirectory() as t:
+            z=Path(t)/'results.zip'
+            with zipfile.ZipFile(z,'w',zipfile.ZIP_DEFLATED) as a:
+              for p in files:a.write(p,p.name)
+            subprocess.run(['openssl','cms','-encrypt','-binary','-aes-256-gcm','-in',str(z),'-out','sealed/results.cms','-outform','DER','-recip','keys/transport_session_cert.pem','-keyopt','rsa_padding_mode:oaep','-keyopt','rsa_oaep_md:sha256','-keyopt','rsa_mgf1_md:sha256'],check=True,capture_output=True)
+          Path('sealed/results.sha256').write_text(hashlib.sha256(Path('sealed/results.cms').read_bytes()).hexdigest())
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ always() && hashFiles('sealed/results.cms') != '' }}
+        with:
+          name: jeonnam-source-recovery-${{ github.run_id }}
+          path: sealed/
+          retention-days: 3
+          if-no-files-found: error
+      - name: Remove temporary source responses
+        if: always()
+        run: rm -rf -- output/
